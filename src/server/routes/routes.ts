@@ -24,6 +24,7 @@ import { cluster } from '../cluster';
 import { generatePdf } from '../../browser/clusterTask';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import createInternalProxies from './createInternalProxies';
+import instanceConfig from '../../common/config';
 
 const router = Router();
 const pdfCache = PdfCache.getInstance();
@@ -73,40 +74,44 @@ function addProxy(req: GenerateHandlerRequest) {
       },
       logger: apiLogger,
     });
-    const apiProxy = createProxyMiddleware({
-      target: config.scalprum.apiHost,
-      secure: false,
-      changeOrigin: true,
-      autoRewrite: true,
-      pathFilter: (path) =>
-        path.startsWith('/api') && !path.includes('crc-pdf-generator'),
-      preserveHeaderKeyCase: true,
-      on: {
-        proxyReq: (proxyReq) => {
-          console.log('THIS SHOULD NOT BE HERE');
-          const authHeader = proxyReq.getHeader(
-            config.AUTHORIZATION_CONTEXT_KEY
-          );
-
-          const strippedHost = config.scalprum.apiHost.replace(
-            /^https?:\/\//,
-            ''
-          );
-          proxyReq.setHeader('Origin', config.scalprum.apiHost);
-          proxyReq.setHeader('Host', strippedHost);
-          proxyReq.setHeader('referer', 'content-type');
-          proxyReq.setHeader('x-forwarded-host', config.scalprum.apiHost);
-
-          if (authHeader) {
-            proxyReq.setHeader(config.AUTHORIZATION_HEADER_KEY, authHeader);
-          }
-          proxyReq.removeHeader(config.AUTHORIZATION_CONTEXT_KEY);
-        },
-      },
-      logger: apiLogger,
-    });
     router.use(assetsProxy);
-    router.use(apiProxy);
+
+    if (!instanceConfig.IS_PRODUCTION) {
+      const apiProxy = createProxyMiddleware({
+        target: config.scalprum.apiHost,
+        secure: false,
+        changeOrigin: true,
+        autoRewrite: true,
+        pathFilter: (path) =>
+          path.startsWith('/api') && !path.includes('crc-pdf-generator'),
+        preserveHeaderKeyCase: true,
+        on: {
+          proxyReq: (proxyReq) => {
+            console.log('THIS SHOULD NOT BE HERE');
+            const authHeader = proxyReq.getHeader(
+              config.AUTHORIZATION_CONTEXT_KEY
+            );
+
+            const strippedHost = config.scalprum.apiHost.replace(
+              /^https?:\/\//,
+              ''
+            );
+            proxyReq.setHeader('Origin', config.scalprum.apiHost);
+            proxyReq.setHeader('Host', strippedHost);
+            proxyReq.setHeader('referer', 'content-type');
+            proxyReq.setHeader('x-forwarded-host', config.scalprum.apiHost);
+
+            if (authHeader) {
+              proxyReq.setHeader(config.AUTHORIZATION_HEADER_KEY, authHeader);
+            }
+            proxyReq.removeHeader(config.AUTHORIZATION_CONTEXT_KEY);
+          },
+        },
+        logger: apiLogger,
+      });
+      router.use(apiProxy);
+    }
+
     hasProxy = true;
   }
 }
